@@ -476,25 +476,25 @@ static void target_process(int master_fd, int slave_fd, int ready_fd,
     signal(SIGINT, SIG_DFL);
     if (setsid() < 0 || ioctl(slave_fd, TIOCSCTTY, 0) < 0) {
         struct startup_message message = { 0, STARTUP_RELAY, errno };
-        (void)write(exec_fd, &message, sizeof(message));
+        (void)write_all(exec_fd, &message, sizeof(message));
         _exit(126);
     }
     if (options->cwd && chdir(options->cwd) < 0) {
         struct startup_message message = { 0, STARTUP_CHDIR, errno };
-        (void)write(exec_fd, &message, sizeof(message));
+        (void)write_all(exec_fd, &message, sizeof(message));
         _exit(126);
     }
     if (dup2(slave_fd, STDIN_FILENO) < 0 ||
         dup2(slave_fd, STDOUT_FILENO) < 0 ||
         dup2(slave_fd, STDERR_FILENO) < 0) {
         struct startup_message message = { 0, STARTUP_RELAY, errno };
-        (void)write(exec_fd, &message, sizeof(message));
+        (void)write_all(exec_fd, &message, sizeof(message));
         _exit(126);
     }
     if (slave_fd > STDERR_FILENO) close(slave_fd);
     execvp(options->argv[0], options->argv);
     struct startup_message message = { 0, STARTUP_EXEC, errno };
-    (void)write(exec_fd, &message, sizeof(message));
+    (void)write_all(exec_fd, &message, sizeof(message));
     _exit(127);
 }
 
@@ -524,14 +524,14 @@ static void relay_process(int master_fd, int slave_fd, int ready_fd,
         set_cloexec(control_fd) < 0 ||
         set_cloexec(exec_pipe[1]) < 0) {
         struct startup_message message = { 0, STARTUP_RELAY, errno };
-        (void)write(ready_fd, &message, sizeof(message));
+        (void)write_all(ready_fd, &message, sizeof(message));
         _exit(1);
     }
 
     pid_t target_pid = fork();
     if (target_pid < 0) {
         struct startup_message message = { 0, STARTUP_RELAY, errno };
-        (void)write(ready_fd, &message, sizeof(message));
+        (void)write_all(ready_fd, &message, sizeof(message));
         _exit(1);
     }
     if (target_pid == 0) {
@@ -554,14 +554,14 @@ static void relay_process(int master_fd, int slave_fd, int ready_fd,
             target_message.stage = STARTUP_RELAY;
             target_message.error_number = errno;
         }
-        (void)write(ready_fd, &target_message, sizeof(target_message));
+        (void)write_all(ready_fd, &target_message, sizeof(target_message));
         (void)waitpid(target_pid, NULL, 0);
         _exit(1);
     }
 
     if (write_number_file(pid_path, (long)target_pid) < 0) {
         struct startup_message message = { 0, STARTUP_RELAY, errno };
-        (void)write(ready_fd, &message, sizeof(message));
+        (void)write_all(ready_fd, &message, sizeof(message));
         (void)kill(-target_pid, SIGKILL);
         (void)kill(target_pid, SIGKILL);
         (void)waitpid(target_pid, NULL, 0);
@@ -569,7 +569,7 @@ static void relay_process(int master_fd, int slave_fd, int ready_fd,
     }
 
     struct startup_message ready = { 1, 0, 0 };
-    (void)write(ready_fd, &ready, sizeof(ready));
+    (void)write_all(ready_fd, &ready, sizeof(ready));
     close(ready_fd);
 
     int null_fd = open("/dev/null", O_RDWR);
