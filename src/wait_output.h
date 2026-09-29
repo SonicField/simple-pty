@@ -1,5 +1,5 @@
-#ifndef NBS_TS_WAIT_OUTPUT_H
-#define NBS_TS_WAIT_OUTPUT_H
+#ifndef SIMPLE_PTY_WAIT_OUTPUT_H
+#define SIMPLE_PTY_WAIT_OUTPUT_H
 
 #include <sys/types.h>
 

@@ -12,67 +12,59 @@ ALL_CFLAGS = $(BASE_CFLAGS) $(CFLAGS)
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
 PTY_LIBS = -lutil
-else
+else ifeq ($(UNAME_S),Darwin)
 PTY_LIBS =
+else
+$(error simple-pty supports Linux and macOS)
 endif
 
 TARGET = simple-pty
-HELPER = simple-pty-helper
 BUILD_DIR = build
-TEST_SESSION = $(BUILD_DIR)/test_session
+SOURCES = src/main.c src/runtime.c src/wait_output.c
+HEADERS = src/runtime.h src/wait_output.h
 TEST_WAIT = $(BUILD_DIR)/test_wait_output
-TEST_ASSERT = $(BUILD_DIR)/test_assert
+TEST_FIXTURE = $(BUILD_DIR)/pty_fixture
 
-CORE_SOURCES = src/session.c src/io.c src/wait.c src/wait_output.c \
-	src/helper_client.c src/helper_check.c
+.PHONY: all clean install test test-docs sanitize analyze
 
-.PHONY: all clean install test sanitize analyze
+all: $(TARGET)
 
-all: $(TARGET) $(HELPER)
-
-$(TARGET): src/main.c $(CORE_SOURCES)
-	$(CC) $(CPPFLAGS) $(ALL_CFLAGS) -o $@ $^ -lpthread $(PTY_LIBS)
-
-$(HELPER): src/helper.c
-	$(CC) $(CPPFLAGS) $(ALL_CFLAGS) -o $@ $^ $(PTY_LIBS)
+$(TARGET): $(SOURCES) $(HEADERS)
+	$(CC) $(CPPFLAGS) $(ALL_CFLAGS) -o $@ $(SOURCES) $(PTY_LIBS)
 
 $(BUILD_DIR):
 	mkdir -p $@
 
-$(TEST_SESSION): tests/test_session.c $(CORE_SOURCES) | $(BUILD_DIR)
-	$(CC) $(CPPFLAGS) $(ALL_CFLAGS) -o $@ $^ -lpthread $(PTY_LIBS)
+$(TEST_WAIT): tests/test_wait_output.c src/wait_output.c src/wait_output.h | $(BUILD_DIR)
+	$(CC) $(CPPFLAGS) $(ALL_CFLAGS) -o $@ tests/test_wait_output.c src/wait_output.c
 
-$(TEST_WAIT): tests/test_wait_output.c src/wait_output.c | $(BUILD_DIR)
-	$(CC) $(CPPFLAGS) $(ALL_CFLAGS) -o $@ $^
+$(TEST_FIXTURE): tests/pty_fixture.c | $(BUILD_DIR)
+	$(CC) $(CPPFLAGS) $(ALL_CFLAGS) -o $@ $<
 
-$(TEST_ASSERT): tests/test_assert.c | $(BUILD_DIR)
-	$(CC) $(CPPFLAGS) $(ALL_CFLAGS) -o $@ $^
-
-test: all $(TEST_SESSION) $(TEST_WAIT) $(TEST_ASSERT)
-	./$(TEST_ASSERT)
+test: all $(TEST_WAIT) $(TEST_FIXTURE)
 	./$(TEST_WAIT)
-	PROGRAM=./$(TARGET) ./tests/test_wait_output_cli.sh
-	PROGRAM=./$(TEST_SESSION) ./tests/run_session_test.sh
+	PROGRAM=./$(TARGET) FIXTURE=./$(TEST_FIXTURE) ./tests/test_cli.sh
+	$(MAKE) test-docs
 
-install: all
+test-docs:
+	./tests/test_docs.sh
+
+install: $(TARGET)
 	install -d "$(DESTDIR)$(BINDIR)"
 	install -m 0755 $(TARGET) "$(DESTDIR)$(BINDIR)/$(TARGET)"
-	install -m 0755 $(HELPER) "$(DESTDIR)$(BINDIR)/$(HELPER)"
 
 sanitize:
 	$(MAKE) clean
 	$(MAKE) CFLAGS='-O1 -g3 -fsanitize=address,undefined -fno-omit-frame-pointer' \
-		all $(TEST_SESSION) $(TEST_WAIT) $(TEST_ASSERT)
-	ASAN_OPTIONS=detect_leaks=1 ./$(TEST_ASSERT)
+		all $(TEST_WAIT) $(TEST_FIXTURE)
 	ASAN_OPTIONS=detect_leaks=1 ./$(TEST_WAIT)
-	ASAN_OPTIONS=detect_leaks=0 PROGRAM=./$(TARGET) ./tests/test_wait_output_cli.sh
-	ASAN_OPTIONS=detect_leaks=0 PROGRAM=./$(TEST_SESSION) ./tests/run_session_test.sh
+	ASAN_OPTIONS=detect_leaks=0 PROGRAM=./$(TARGET) \
+		FIXTURE=./$(TEST_FIXTURE) ./tests/test_cli.sh
 
 analyze: | $(BUILD_DIR)
-	gcc $(CPPFLAGS) $(BASE_CFLAGS) -O0 -g -fanalyzer \
-		-o $(BUILD_DIR)/simple-pty-analyze src/main.c $(CORE_SOURCES) \
-		-lpthread $(PTY_LIBS)
+	$(CC) $(CPPFLAGS) $(BASE_CFLAGS) -O0 -g -fanalyzer \
+		-o $(BUILD_DIR)/simple-pty-analyze $(SOURCES) $(PTY_LIBS)
 
 clean:
-	rm -f $(TARGET) $(HELPER)
+	rm -f $(TARGET)
 	rm -rf $(BUILD_DIR)
