@@ -6,14 +6,16 @@ DESTDIR ?=
 CPPFLAGS ?= -Isrc
 BASE_CFLAGS = -Wall -Wextra -Wshadow -Werror -std=c11 \
 	-D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE
+PLATFORM_CFLAGS =
 CFLAGS ?= -O2
-ALL_CFLAGS = $(BASE_CFLAGS) $(CFLAGS)
+ALL_CFLAGS = $(BASE_CFLAGS) $(PLATFORM_CFLAGS) $(CFLAGS)
 
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
 PTY_LIBS = -lutil
 else ifeq ($(UNAME_S),Darwin)
 PTY_LIBS =
+PLATFORM_CFLAGS = -D_DARWIN_C_SOURCE
 else
 $(error simple-pty supports Linux and macOS)
 endif
