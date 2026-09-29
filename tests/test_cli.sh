@@ -63,14 +63,21 @@ file_mode() {
 
 # Direct argv, real controlling PTY, cwd, and target exit status.
 mkdir "$test_root/work"
+expected_work=$(cd "$test_root/work" && pwd -P)
 literal="\$(touch SHOULD_NOT_EXIST); *"
 start --rows=31 --cols=97 --cwd="$test_root/work" --name=probe -- \
     "$fixture" probe "two words" "$literal"
 "$program" wait "$new_handle" --timeout=2000 >"$test_root/exit"
 [ "$(cat "$test_root/exit")" = 0 ] || fail "wait did not report exit 0"
 "$program" output "$new_handle" >"$test_root/probe"
-grep -F "TTY 111 FG 1 CWD $test_root/work ARGC 2" "$test_root/probe" >/dev/null ||
-    fail "target did not receive a real controlling PTY or requested cwd"
+if ! grep -F "TTY 111 FG 1" "$test_root/probe" >/dev/null; then
+    cat "$test_root/probe" >&2
+    fail "target did not receive a real controlling PTY"
+fi
+if ! grep -F "CWD $expected_work ARGC 2" "$test_root/probe" >/dev/null; then
+    cat "$test_root/probe" >&2
+    fail "target did not receive the requested cwd"
+fi
 grep -F 'ARG 0 <two words>' "$test_root/probe" >/dev/null ||
     fail "space-containing argument changed"
 grep -F "ARG 1 <$literal>" "$test_root/probe" >/dev/null ||
