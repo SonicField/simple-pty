@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  portable-build:
+    name: ${{ matrix.platform }} / ${{ matrix.compiler }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Ubuntu x86-64
+            runner: ubuntu-24.04
+            compiler: GCC
+            cc: gcc
+            architecture: x86_64
+          - platform: Ubuntu x86-64
+            runner: ubuntu-24.04
+            compiler: Clang
+            cc: clang
+            architecture: x86_64
+          - platform: Ubuntu ARM64
+            runner: ubuntu-24.04-arm
+            compiler: GCC
+            cc: gcc
+            architecture: aarch64
+          - platform: Ubuntu ARM64
+            runner: ubuntu-24.04-arm
+            compiler: Clang
+            cc: clang
+            architecture: aarch64
+          - platform: macOS Intel
+            runner: macos-15-intel
+            compiler: Apple Clang
+            cc: clang
+            architecture: x86_64
+          - platform: macOS ARM64
+            runner: macos-15
+            compiler: Apple Clang
+            cc: clang
+            architecture: arm64
+    env:
+      CC: ${{ matrix.cc }}
+      EXPECTED_ARCH: ${{ matrix.architecture }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: Verify runner architecture
+        run: test "$(uname -m)" = "$EXPECTED_ARCH"
+      - name: Build and test
+        run: make test
+      - name: Verify staged install
+        run: |
+          stage=$(mktemp -d)
+          make install DESTDIR="$stage"
+          "$stage/usr/local/bin/simple-pty" help >/dev/null
+
+  sanitizers:
+    name: ASan and UBSan / Ubuntu x86-64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CC: clang
+    steps:
+      - name: Check out source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: Run sanitizers
+        run: make sanitize
+
+  static-analysis:
+    name: Static analysis and shell checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: Run GCC analyzer
+        run: make analyze CC=gcc
+      - name: Check portable shell scripts
+        run: shellcheck tests/*.sh
