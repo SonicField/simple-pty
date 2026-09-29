@@ -25,7 +25,7 @@ HEADERS = src/runtime.h src/wait_output.h
 TEST_WAIT = $(BUILD_DIR)/test_wait_output
 TEST_FIXTURE = $(BUILD_DIR)/pty_fixture
 
-.PHONY: all clean install test test-docs sanitize analyze
+.PHONY: all clean install test test-docs test-tools sanitize analyze
 
 all: $(TARGET)
 
@@ -48,6 +48,9 @@ test: all $(TEST_WAIT) $(TEST_FIXTURE)
 
 test-docs:
 	./tests/test_docs.sh
+
+test-tools: all
+	PROGRAM=./$(TARGET) ./tests/test_real_programs.sh
 
 install: $(TARGET)
 	install -d "$(DESTDIR)$(BINDIR)"

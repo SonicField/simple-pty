@@ -170,6 +170,7 @@ security boundary. Captured output remains until `remove` is called.
 
 ```sh
 make test       # unit, black-box CLI, PTY, lifecycle, and documentation checks
+make test-tools # real GDB and Vim sessions (requires both programs)
 make sanitize   # the same core behavior under AddressSanitizer and UBSan
 make analyze    # GCC path-sensitive static analysis
 ```

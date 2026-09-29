@@ -61,6 +61,14 @@ jobs:
         run: test "$(uname -m)" = "$EXPECTED_ARCH"
       - name: Build and test
         run: make test
+      - name: Install real interactive test programs
+        if: matrix.platform == 'Ubuntu x86-64' && matrix.compiler == 'GCC'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes gdb vim
+      - name: Exercise GDB and Vim
+        if: matrix.platform == 'Ubuntu x86-64' && matrix.compiler == 'GCC'
+        run: make test-tools
       - name: Verify staged install
         run: |
           stage=$(mktemp -d)
