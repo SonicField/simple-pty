@@ -15,6 +15,7 @@
 
 #include "session_internal.h"
 #include "nbs_assert.h"
+#include "wait_output.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -127,84 +128,6 @@ int nbs_ts_wait_pattern(nbs_ts_session_t *s, const char *pattern,
     ASSERT_MSG(timeout_ms >= 0, "nbs_ts_wait_pattern: timeout_ms must be "
                "non-negative, got %d", timeout_ms);
 
-    int ifd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
-    if (ifd < 0) {
-        fprintf(stderr, "nbs_ts_wait_pattern: inotify_init1 failed: "
-                "errno=%d\n", errno);
-        return -1;
-    }
-
-    int wd = inotify_add_watch(ifd, s->output_log_path,
-                               IN_MODIFY | IN_CLOSE_WRITE);
-    if (wd < 0) {
-        fprintf(stderr, "nbs_ts_wait_pattern: inotify_add_watch failed: "
-                "path=%s errno=%d\n", s->output_log_path, errno);
-        close(ifd);
-        return -1;
-    }
-
-    long long pat_now_ms = get_monotonic_ms();
-    if (pat_now_ms < 0) {
-        inotify_rm_watch(ifd, wd);
-        close(ifd);
-        return -1;
-    }
-    long long deadline = pat_now_ms + timeout_ms;
-    int found = 0;
-    size_t search_offset = 0;
-    size_t pat_len = strlen(pattern);
-
-    for (;;) {
-        int fd = open(s->output_log_path, O_RDONLY);
-        if (fd >= 0) {
-            off_t end = lseek(fd, 0, SEEK_END);
-            if (end > (off_t)search_offset) {
-                size_t to_read = (size_t)(end - (off_t)search_offset);
-                if (to_read > 1024 * 1024) to_read = 1024 * 1024;
-
-                char *buf = malloc(to_read + 1);
-                if (buf) {
-                    ssize_t n = pread(fd, buf, to_read, (off_t)search_offset);
-                    if (n > 0) {
-                        buf[n] = '\0';
-                        if (strstr(buf, pattern)) found = 1;
-                        /* Rewind by pattern length - 1 so that a pattern
-                         * split across two reads is not missed. The tail
-                         * of this chunk is re-read as the head of the next. */
-                        if ((size_t)n >= pat_len)
-                            search_offset += (size_t)n - (pat_len - 1);
-                        else
-                            search_offset += (size_t)n;
-                    }
-                    free(buf);
-                }
-            }
-            close(fd);
-        }
-
-        if (found) break;
-
-        long long now = get_monotonic_ms();
-        if (now < 0) break;
-        int remaining = (int)(deadline - now);
-        if (remaining <= 0) break;
-
-        struct pollfd pfd = { .fd = ifd, .events = POLLIN };
-        int pr = poll(&pfd, 1, remaining);
-
-        if (pr > 0) {
-            char evbuf[256];
-            while (read(ifd, evbuf, sizeof(evbuf)) > 0)
-                ;
-        } else if (pr == 0) {
-            break;
-        } else if (errno != EINTR) {
-            break;
-        }
-    }
-
-    inotify_rm_watch(ifd, wd);
-    close(ifd);
-
-    return found ? 0 : -1;
+    int result = wait_output_file(s->output_log_path, pattern, 0, timeout_ms);
+    return result == WAIT_OUTPUT_FOUND ? 0 : -1;
 }

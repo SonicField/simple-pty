@@ -13,6 +13,7 @@
 #include "nbs_ts.h"
 #include "session_internal.h"
 #include "helper_client.h"
+#include "wait_output.h"
 #include "nbs_assert.h"
 #include "nbs_helper_check.h"
 
@@ -88,6 +89,26 @@ static int parse_int_option(const char *arg, int default_val)
         return -1;
     }
     return (int)val;
+}
+
+static int parse_offset_option(const char *arg, off_t *out)
+{
+    ASSERT_MSG(arg != NULL, "parse_offset_option: arg is NULL");
+    ASSERT_MSG(out != NULL, "parse_offset_option: out is NULL");
+
+    const char *eq = strchr(arg, '=');
+    if (!eq || eq[1] == '\0') return -1;
+
+    errno = 0;
+    char *endptr;
+    long long value = strtoll(eq + 1, &endptr, 10);
+    off_t converted = (off_t)value;
+    if (errno == ERANGE || *endptr != '\0' || value < 0 ||
+        (long long)converted != value) {
+        return -1;
+    }
+    *out = converted;
+    return 0;
 }
 
 static char *read_file_str(const char *path, char *buf, size_t bufsize)
@@ -975,7 +996,7 @@ static int cmd_exit_code(const char *handle)
 }
 
 static int cmd_wait_pattern(const char *handle, const char *pattern,
-                            int timeout_sec)
+                            off_t start_offset, int timeout_sec)
 {
     if (!session_exists(handle)) {
         fprintf(stderr, "nbs-ts: session '%s' not found\n", handle);
@@ -989,77 +1010,12 @@ static int cmd_wait_pattern(const char *handle, const char *pattern,
     char log_path[MAX_FILE_PATH];
     snprintf(log_path, sizeof(log_path), "%s/output.log", dir);
 
-    int ifd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
-    if (ifd < 0) return NBS_TS_EXIT_ERROR;
-
-    int wd = inotify_add_watch(ifd, log_path, IN_MODIFY | IN_CLOSE_WRITE);
-    if (wd < 0) { close(ifd); return NBS_TS_EXIT_ERROR; }
-
-    struct timespec deadline;
-    if (clock_gettime(CLOCK_MONOTONIC, &deadline) != 0) {
-        fprintf(stderr, "nbs-ts: cmd_wait_pattern: clock_gettime failed: %s\n",
-                strerror(errno));
-        inotify_rm_watch(ifd, wd);
-        close(ifd);
-        return NBS_TS_EXIT_ERROR;
-    }
-    deadline.tv_sec += timeout_sec;
-
-    int found = 0;
-    size_t search_offset = 0;
-
-    for (;;) {
-        int fd = open(log_path, O_RDONLY);
-        if (fd >= 0) {
-            off_t end = lseek(fd, 0, SEEK_END);
-            if (end > (off_t)search_offset) {
-                size_t to_read = (size_t)(end - (off_t)search_offset);
-                if (to_read > 1024 * 1024) to_read = 1024 * 1024;
-                char *buf = malloc(to_read + 1);
-                if (!buf) {
-                    fprintf(stderr, "nbs-ts: cmd_wait_pattern: malloc(%zu) failed: %s\n",
-                            to_read + 1, strerror(errno));
-                    close(fd);
-                    inotify_rm_watch(ifd, wd);
-                    close(ifd);
-                    return NBS_TS_EXIT_ERROR;
-                }
-                {
-                    ssize_t n = pread(fd, buf, to_read, (off_t)search_offset);
-                    if (n > 0) {
-                        buf[n] = '\0';
-                        if (strstr(buf, pattern)) found = 1;
-                        search_offset += (size_t)n;
-                    }
-                    free(buf);
-                }
-            }
-            close(fd);
-        }
-
-        if (found) break;
-
-        struct timespec now;
-        if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) break;
-        long long remaining_ms = (deadline.tv_sec - now.tv_sec) * 1000LL +
-                                 (deadline.tv_nsec - now.tv_nsec) / 1000000LL;
-        if (remaining_ms <= 0) break;
-
-        struct pollfd pfd = { .fd = ifd, .events = POLLIN };
-        int pr = poll(&pfd, 1, (int)(remaining_ms > INT_MAX ? INT_MAX : remaining_ms));
-        if (pr > 0) {
-            char evbuf[256];
-            while (read(ifd, evbuf, sizeof(evbuf)) > 0) ;
-        } else if (pr == 0) {
-            break;
-        } else if (errno != EINTR) {
-            break;
-        }
-    }
-
-    inotify_rm_watch(ifd, wd);
-    close(ifd);
-    return found ? NBS_TS_EXIT_SUCCESS : NBS_TS_EXIT_TIMEOUT;
+    if (timeout_sec > INT_MAX / 1000) return NBS_TS_EXIT_BAD_ARGS;
+    int result = wait_output_file(log_path, pattern, start_offset,
+                                  timeout_sec * 1000);
+    if (result == WAIT_OUTPUT_FOUND) return NBS_TS_EXIT_SUCCESS;
+    if (result == WAIT_OUTPUT_TIMEOUT) return NBS_TS_EXIT_TIMEOUT;
+    return NBS_TS_EXIT_ERROR;
 }
 
 static int cmd_wait_complete(const char *handle, int timeout_sec)
@@ -1427,7 +1383,8 @@ static int cmd_help(void)
     printf("  read <handle> [--offset=N|--last=N] Read output from offset or last N lines\n");
     printf("  wait-complete <handle> [--timeout=N]  Wait for command completion\n");
     printf("                                        (does not detect exit/logout — use exit-code)\n");
-    printf("  wait-pattern <handle> <pattern> [--timeout=N]  Wait for pattern\n");
+    printf("  wait-pattern <handle> <pattern> [--from=N] [--timeout=N]\n");
+    printf("                                         Wait for raw output pattern\n");
     printf("  status <handle>                   Check session status\n");
     printf("  exit-code <handle>                Get exit code\n");
     printf("  kill <handle>                     Terminate session\n");
@@ -1619,10 +1576,16 @@ int main(int argc, char *argv[])
         }
         { int hrc = require_valid_handle(argv[2]); if (hrc) return hrc; }
         int timeout = 60;
+        off_t start_offset = 0;
         for (int i = 4; i < argc; i++) {
             if (strncmp(argv[i], "--timeout=", 10) == 0) {
                 timeout = parse_int_option(argv[i], timeout);
                 if (timeout == -1) return NBS_TS_EXIT_BAD_ARGS;
+            } else if (strncmp(argv[i], "--from=", 7) == 0) {
+                if (parse_offset_option(argv[i], &start_offset) != 0) {
+                    fprintf(stderr, "Error: --from must be a non-negative offset\n");
+                    return NBS_TS_EXIT_BAD_ARGS;
+                }
             } else {
                 char safe[MAX_DISPLAY_LEN];
                 sanitise_for_display(argv[i], safe, sizeof(safe));
@@ -1630,7 +1593,7 @@ int main(int argc, char *argv[])
                 return NBS_TS_EXIT_BAD_ARGS;
             }
         }
-        return cmd_wait_pattern(argv[2], argv[3], timeout);
+        return cmd_wait_pattern(argv[2], argv[3], start_offset, timeout);
 
     } else if (strcmp(cmd, "status") == 0) {
         if (argc < 3) {

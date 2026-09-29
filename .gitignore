@@ -1,0 +1,7 @@
+/bin/
+/build/
+/src/nbs-ts/*.o
+/src/nbs-ts/assert_check
+/src/nbs-ts/nbs-ts
+/src/nbs-ts/nbs-ts-helper
+/src/nbs-ts/test_wait_output

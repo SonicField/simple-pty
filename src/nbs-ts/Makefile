@@ -5,13 +5,14 @@ LDFLAGS = -lpthread -lutil
 BIN_DIR = ../../bin
 
 COMMON_DIR = ../nbs-common
-SRCS = main.c session.c io.c wait.c helper_client.c
+SRCS = main.c session.c io.c wait.c wait_output.c helper_client.c
 OBJS = $(SRCS:.c=.o)
 COMMON_OBJS = nbs_helper_check.o
 TARGET = nbs-ts
 HELPER = nbs-ts-helper
 
 ASSERT_CHECK = assert_check
+WAIT_TEST = test_wait_output
 
 .PHONY: all clean install test debug asan test-valgrind
 
@@ -26,6 +27,9 @@ $(TARGET): $(OBJS) $(COMMON_OBJS)
 $(ASSERT_CHECK): assert_check.c
 	$(CC) $(CFLAGS) -I../nbs-common -o $@ $<
 
+$(WAIT_TEST): test_wait_output.c wait_output.c wait_output.h
+	$(CC) $(CFLAGS) -o $@ test_wait_output.c wait_output.c
+
 %.o: %.c
 	$(CC) $(CFLAGS) -I../nbs-common -c -o $@ $<
 
@@ -38,11 +42,13 @@ install: all
 	install $(TARGET) $(BIN_DIR)/
 	install $(HELPER) $(BIN_DIR)/
 
-test: all install
+test: all $(WAIT_TEST) install
 	./$(ASSERT_CHECK)
+	./$(WAIT_TEST)
+	PROGRAM=./$(TARGET) ./test_wait_output_cli.sh
 
 clean:
-	rm -f $(OBJS) $(COMMON_OBJS) helper.o $(TARGET) $(HELPER) $(ASSERT_CHECK)
+	rm -f $(OBJS) $(COMMON_OBJS) helper.o $(TARGET) $(HELPER) $(ASSERT_CHECK) $(WAIT_TEST)
 
 debug: CFLAGS = $(COMMON_CFLAGS) -O0 -g
 debug: clean all
