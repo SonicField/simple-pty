@@ -5,7 +5,7 @@
  */
 
 #include "helper_client.h"
-#include "nbs_assert.h"
+#include "assert.h"
 
 #include <errno.h>
 #include <stdio.h>

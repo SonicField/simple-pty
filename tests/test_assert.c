@@ -4,7 +4,7 @@
  * Standard pattern across all NBS components.
  */
 
-#include "../nbs-common/nbs_assert.h"
+#include "assert.h"
 
 #include <stdio.h>
 #include <signal.h>

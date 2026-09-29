@@ -2,7 +2,7 @@
  * nbs_helper_check.c — Check if nbs-ts-helper is running.
  */
 
-#include "nbs_helper_check.h"
+#include "helper_check.h"
 
 #include <stdio.h>
 #include <stdlib.h>

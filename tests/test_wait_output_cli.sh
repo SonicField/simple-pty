@@ -1,7 +1,10 @@
 #!/bin/sh
 set -eu
 
-program=${PROGRAM:-./nbs-ts}
+unset CDPATH
+script_dir=$(cd -- "$(dirname -- "$0")" && pwd)
+project_root=$(dirname "$script_dir")
+program=${PROGRAM:-$project_root/simple-pty}
 test_root=$(mktemp -d "${TMPDIR:-/tmp}/simple-pty-wait-cli.XXXXXX")
 test_home="$test_root/home"
 handle=

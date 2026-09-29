@@ -32,8 +32,8 @@
 
 #include "session_internal.h"
 #include "helper_client.h"
-#include "nbs_assert.h"
-#include "nbs_helper_check.h"
+#include "assert.h"
+#include "helper_check.h"
 
 #include <stdio.h>
 #include <stdlib.h>

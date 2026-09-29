@@ -11,7 +11,7 @@
  */
 
 #include "session_internal.h"
-#include "nbs_assert.h"
+#include "assert.h"
 
 #include <stdio.h>
 #include <string.h>

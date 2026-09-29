@@ -14,7 +14,7 @@
  */
 
 #include "session_internal.h"
-#include "nbs_assert.h"
+#include "assert.h"
 #include "wait_output.h"
 
 #include <stdio.h>

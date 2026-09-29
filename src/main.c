@@ -10,12 +10,12 @@
  *   0 = success, 1 = error, 2 = not found, 3 = timeout, 4 = bad args
  */
 
-#include "nbs_ts.h"
+#include "simple_pty.h"
 #include "session_internal.h"
 #include "helper_client.h"
 #include "wait_output.h"
-#include "nbs_assert.h"
-#include "nbs_helper_check.h"
+#include "assert.h"
+#include "helper_check.h"
 
 #include <stdio.h>
 #include <stdlib.h>

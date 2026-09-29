@@ -8,7 +8,7 @@
  *        -I../nbs-common test_nbs_ts.c session.c io.c wait.c -lpthread -lutil
  */
 
-#include "nbs_ts.h"
+#include "simple_pty.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

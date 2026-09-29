@@ -18,7 +18,7 @@
 
 #define _GNU_SOURCE
 
-#include "nbs_assert.h"
+#include "assert.h"
 
 #include <errno.h>
 #include <stdarg.h>

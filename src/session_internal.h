@@ -8,7 +8,7 @@
 #ifndef NBS_TS_SESSION_INTERNAL_H
 #define NBS_TS_SESSION_INTERNAL_H
 
-#include "nbs_ts.h"
+#include "simple_pty.h"
 #include <pthread.h>
 
 /*
